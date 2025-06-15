@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import './VideoChat.css';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+// Use the same domain for both frontend and backend
+const BACKEND_URL = window.location.origin;
 
 const VideoChat = () => {
     const [isConnected, setIsConnected] = useState(false);
