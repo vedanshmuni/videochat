@@ -146,8 +146,21 @@ const LocalVideoOnly = () => {
         const stream = event.streams[0];
         if (!remoteVideoRef.current.srcObject) {
           remoteVideoRef.current.srcObject = stream;
+          // Force reflow for stubborn browsers
+          remoteVideoRef.current.style.display = 'none';
+          setTimeout(() => {
+            remoteVideoRef.current.style.display = 'block';
+            remoteVideoRef.current.play()
+              .then(() => {
+                console.log('[WebRTC] Remote video playing after reflow');
+                setCanPlay(false);
+              })
+              .catch(e => {
+                console.error('[WebRTC] Remote video play error after reflow:', e);
+                setCanPlay(true);
+              });
+          }, 10);
           console.log('[WebRTC] Set remote video srcObject:', stream);
-          setCanPlay(true); // Enable play button
           remoteVideoRef.current.style.border = '3px solid red';
           remoteVideoRef.current.style.background = '#222';
           // Monitor video track
@@ -213,37 +226,22 @@ const LocalVideoOnly = () => {
     if (role === 'offerer') {
       pc.createOffer()
         .then(offer => {
-          // Force VP8 for video
+          // Allow both VP8 and H264 for compatibility
           const lines = offer.sdp.split('\r\n');
           const videoSectionStart = lines.findIndex(line => line.startsWith('m=video'));
           if (videoSectionStart !== -1) {
+            // Find VP8 and H264 payload types
             const vp8Line = lines.find(line => line.includes('a=rtpmap') && line.includes('VP8/90000'));
-            if (vp8Line) {
-              const vp8Pt = vp8Line.match(/a=rtpmap:(\d+)/)[1];
-              const rtxPt = parseInt(vp8Pt) + 1; // Assume RTX is next payload type
-              // Update m=video line to include only VP8 and its RTX
-              lines[videoSectionStart] = `m=video 9 UDP/TLS/RTP/SAVPF ${vp8Pt} ${rtxPt}`;
-              // Keep only VP8 and RTX-related lines
-              const keepLines = lines.filter(line => 
-                !line.startsWith('m=video') && // Keep non-video section lines
-                !line.includes('a=rtpmap') && // Remove all codec lines
-                !line.includes('a=fmtp') && // Remove all fmtp lines
-                !line.includes('a=rtcp-fb') // Remove all rtcp-fb lines
-              );
-              // Add back VP8 and RTX lines
-              const vp8Lines = lines.filter(line => 
-                line === vp8Line || // VP8 rtpmap
-                (line.includes('a=rtcp-fb') && line.includes(vp8Pt)) || // VP8 rtcp-fb
-                (line.includes('a=fmtp') && line.includes(vp8Pt)) || // VP8 fmtp
-                (line.includes('a=rtpmap') && line.includes(`rtx/90000`) && lines.some(l => l.includes(`a=fmtp:${rtxPt} apt=${vp8Pt}`))) || // RTX rtpmap
-                (line.includes('a=fmtp') && line.includes(`apt=${vp8Pt}`)) // RTX fmtp
-              );
-              // Insert VP8 and RTX lines after video section start
-              lines.splice(videoSectionStart, lines.length - videoSectionStart, ...[lines[videoSectionStart], ...vp8Lines]);
-              offer.sdp = lines.join('\r\n');
+            const h264Line = lines.find(line => line.includes('a=rtpmap') && line.includes('H264/90000'));
+            let payloadTypes = [];
+            if (vp8Line) payloadTypes.push(vp8Line.match(/a=rtpmap:(\d+)/)[1]);
+            if (h264Line) payloadTypes.push(h264Line.match(/a=rtpmap:(\d+)/)[1]);
+            if (payloadTypes.length > 0) {
+              lines[videoSectionStart] = `m=video 9 UDP/TLS/RTP/SAVPF ${payloadTypes.join(' ')}`;
             }
           }
-          console.log('[WebRTC] Modified offer SDP for VP8:', offer.sdp);
+          offer.sdp = lines.join('\r\n');
+          console.log('[WebRTC] Modified offer SDP for VP8/H264:', offer.sdp);
           return pc.setLocalDescription(offer);
         })
         .then(() => {
