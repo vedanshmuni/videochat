@@ -29,12 +29,14 @@ io.on('connection', (socket) => {
     socket.on('join', (interests) => {
         let foundMatch = false;
         for (let [waitingSocket, waitingInterests] of waitingUsers.entries()) {
-            if (!interests || !waitingInterests || 
-                interests.some(interest => waitingInterests.includes(interest))) {
+            if (
+                waitingSocket.id !== socket.id && // Prevent self-matching
+                (!interests || !waitingInterests || 
+                interests.some(interest => waitingInterests.includes(interest)))
+            ) {
                 waitingUsers.delete(waitingSocket);
                 socket.join(waitingSocket.id);
                 waitingSocket.join(socket.id);
-                // Notify both users they are connected and assign roles
                 io.to(socket.id).emit('partner-found', { partnerId: waitingSocket.id, role: 'offerer' });
                 io.to(waitingSocket.id).emit('partner-found', { partnerId: socket.id, role: 'answerer' });
                 console.log('Matched', socket.id, '(offerer) with', waitingSocket.id, '(answerer)');
@@ -44,7 +46,7 @@ io.on('connection', (socket) => {
         }
         if (!foundMatch) {
             waitingUsers.set(socket, interests || []);
-            console.log('User waiting:', socket.id);
+            console.log('User waiting:', socket.id, 'Current waiting:', Array.from(waitingUsers.keys()).map(s => s.id));
         }
     });
 
