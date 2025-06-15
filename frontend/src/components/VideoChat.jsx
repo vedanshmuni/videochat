@@ -18,6 +18,7 @@ const VideoChat = () => {
     const peerConnectionRef = useRef(null);
     const socketRef = useRef(null);
     const messagesEndRef = useRef(null);
+    const localStreamRef = useRef(null); // Store the local stream
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -34,12 +35,13 @@ const VideoChat = () => {
         // Request camera and microphone permissions
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then((stream) => {
+                localStreamRef.current = stream;
                 if (localVideoRef.current) {
                     localVideoRef.current.srcObject = stream;
                 }
             })
             .catch((err) => {
-                setError('Error accessing camera and microphone: ' + err.message);
+                setError('Error accessing camera and microphone: ' + err.message + '. Please allow permissions and reload the page.');
             });
 
         // Socket event handlers
@@ -80,6 +82,9 @@ const VideoChat = () => {
             }
             if (peerConnectionRef.current) {
                 peerConnectionRef.current.close();
+            }
+            if (localStreamRef.current) {
+                localStreamRef.current.getTracks().forEach(track => track.stop());
             }
         };
     }, []);
@@ -124,9 +129,11 @@ const VideoChat = () => {
         peerConnectionRef.current = peerConnection;
 
         // Add local stream to peer connection
-        localVideoRef.current.srcObject.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localVideoRef.current.srcObject);
-        });
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStreamRef.current);
+            });
+        }
 
         // Handle ICE candidates
         peerConnection.onicecandidate = (event) => {
@@ -163,9 +170,11 @@ const VideoChat = () => {
         peerConnectionRef.current = peerConnection;
 
         // Add local stream
-        localVideoRef.current.srcObject.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localVideoRef.current.srcObject);
-        });
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStreamRef.current);
+            });
+        }
 
         // Handle ICE candidates
         peerConnection.onicecandidate = (event) => {
@@ -185,7 +194,7 @@ const VideoChat = () => {
         };
 
         // Set remote description and create answer
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        await peerConnection.setRemoteDescription(new window.RTCSessionDescription(data.sdp));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
@@ -196,16 +205,20 @@ const VideoChat = () => {
     };
 
     const handleAnswer = async (data) => {
-        await peerConnectionRef.current.setRemoteDescription(
-            new RTCSessionDescription(data.sdp)
-        );
+        if (peerConnectionRef.current) {
+            await peerConnectionRef.current.setRemoteDescription(
+                new window.RTCSessionDescription(data.sdp)
+            );
+        }
     };
 
     const handleIceCandidate = async (data) => {
         try {
-            await peerConnectionRef.current.addIceCandidate(
-                new RTCIceCandidate(data.candidate)
-            );
+            if (peerConnectionRef.current) {
+                await peerConnectionRef.current.addIceCandidate(
+                    new window.RTCIceCandidate(data.candidate)
+                );
+            }
         } catch (e) {
             console.error('Error adding received ice candidate', e);
         }
