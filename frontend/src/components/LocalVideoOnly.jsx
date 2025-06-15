@@ -136,18 +136,22 @@ const LocalVideoOnly = () => {
         videoTracks.forEach(track => {
           console.log('[WebRTC] Remote video track enabled:', track.enabled, 'readyState:', track.readyState);
         });
-        remoteVideoRef.current.srcObject = stream;
-        // remoteVideoRef.current.muted = true; // Commented out for debugging
+        // Only set srcObject if it's not already set to this stream
+        if (remoteVideoRef.current.srcObject !== stream) {
+          remoteVideoRef.current.srcObject = stream;
+          console.log('[WebRTC] Set remote video srcObject:', stream);
+          remoteVideoRef.current.play()
+            .then(() => console.log('[WebRTC] Remote video playing'))
+            .catch(e => console.log('[WebRTC] Remote video play error:', e));
+        } else {
+          console.log('[WebRTC] Remote video srcObject already set, skipping');
+        }
         remoteVideoRef.current.style.border = '3px solid red';
         remoteVideoRef.current.style.background = '#222';
         setTimeout(() => {
           const rect = remoteVideoRef.current.getBoundingClientRect();
           console.log('[WebRTC] Remote video element size:', rect.width, rect.height, 'display:', getComputedStyle(remoteVideoRef.current).display, 'visibility:', getComputedStyle(remoteVideoRef.current).visibility);
         }, 500);
-        console.log('[WebRTC] Set remote video srcObject:', stream);
-        remoteVideoRef.current.play()
-          .then(() => console.log('[WebRTC] Remote video playing'))
-          .catch(e => console.log('[WebRTC] Remote video play error:', e));
       } else {
         console.log('[WebRTC] ontrack: No remote video element or no stream');
       }
