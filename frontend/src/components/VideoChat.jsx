@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import './VideoChat.css';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+
 const VideoChat = () => {
     const [isConnected, setIsConnected] = useState(false);
     const [isWaiting, setIsWaiting] = useState(false);
@@ -27,7 +29,7 @@ const VideoChat = () => {
 
     useEffect(() => {
         // Initialize socket connection
-        socketRef.current = io('http://localhost:3000');
+        socketRef.current = io(BACKEND_URL);
 
         // Request camera and microphone permissions
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
