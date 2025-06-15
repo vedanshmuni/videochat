@@ -20,6 +20,7 @@ const VideoChat = () => {
     const socketRef = useRef(null);
     const messagesEndRef = useRef(null);
     const localStreamRef = useRef(null); // Store the local stream
+    const pendingCandidatesRef = useRef([]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -167,6 +168,25 @@ const VideoChat = () => {
         }
     };
 
+    const handleIceCandidate = async (data) => {
+        try {
+            if (!peerConnectionRef.current) return;
+            const candidate = new window.RTCIceCandidate(data.candidate);
+            if (
+                peerConnectionRef.current.remoteDescription &&
+                peerConnectionRef.current.remoteDescription.type
+            ) {
+                await peerConnectionRef.current.addIceCandidate(candidate);
+            } else {
+                // Queue the candidate for later
+                pendingCandidatesRef.current.push(candidate);
+                console.log('Queued ICE candidate');
+            }
+        } catch (e) {
+            console.error('Error adding received ice candidate', e);
+        }
+    };
+
     const handleOffer = async (data) => {
         if (role !== 'answerer') return;
         if (!peerConnectionRef.current) return;
@@ -178,6 +198,17 @@ const VideoChat = () => {
         await peerConnectionRef.current.setRemoteDescription(
             new window.RTCSessionDescription(data.sdp)
         );
+        // Add any queued ICE candidates
+        if (pendingCandidatesRef.current.length > 0) {
+            for (const candidate of pendingCandidatesRef.current) {
+                try {
+                    await peerConnectionRef.current.addIceCandidate(candidate);
+                } catch (e) {
+                    console.error('Error adding queued ICE candidate', e);
+                }
+            }
+            pendingCandidatesRef.current = [];
+        }
         const answer = await peerConnectionRef.current.createAnswer();
         await peerConnectionRef.current.setLocalDescription(answer);
         socketRef.current.emit('answer', {
@@ -197,17 +228,16 @@ const VideoChat = () => {
         await peerConnectionRef.current.setRemoteDescription(
             new window.RTCSessionDescription(data.sdp)
         );
-    };
-
-    const handleIceCandidate = async (data) => {
-        try {
-            if (peerConnectionRef.current) {
-                await peerConnectionRef.current.addIceCandidate(
-                    new window.RTCIceCandidate(data.candidate)
-                );
+        // Add any queued ICE candidates
+        if (pendingCandidatesRef.current.length > 0) {
+            for (const candidate of pendingCandidatesRef.current) {
+                try {
+                    await peerConnectionRef.current.addIceCandidate(candidate);
+                } catch (e) {
+                    console.error('Error adding queued ICE candidate', e);
+                }
             }
-        } catch (e) {
-            console.error('Error adding received ice candidate', e);
+            pendingCandidatesRef.current = [];
         }
     };
 
