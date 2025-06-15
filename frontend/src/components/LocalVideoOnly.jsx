@@ -128,8 +128,21 @@ const LocalVideoOnly = () => {
     pc.ontrack = (event) => {
       console.log('[WebRTC] ontrack event:', event.streams);
       if (remoteVideoRef.current && event.streams[0]) {
-        remoteVideoRef.current.srcObject = event.streams[0];
-        console.log('[WebRTC] Set remote video srcObject:', event.streams[0]);
+        const stream = event.streams[0];
+        const videoTracks = stream.getVideoTracks();
+        const audioTracks = stream.getAudioTracks();
+        console.log('[WebRTC] Remote stream video tracks:', videoTracks);
+        console.log('[WebRTC] Remote stream audio tracks:', audioTracks);
+        remoteVideoRef.current.srcObject = stream;
+        // For debugging: force muted, add border, log size/visibility
+        remoteVideoRef.current.muted = true;
+        remoteVideoRef.current.style.border = '3px solid red';
+        remoteVideoRef.current.style.background = '#222';
+        setTimeout(() => {
+          const rect = remoteVideoRef.current.getBoundingClientRect();
+          console.log('[WebRTC] Remote video element size:', rect.width, rect.height, 'display:', getComputedStyle(remoteVideoRef.current).display, 'visibility:', getComputedStyle(remoteVideoRef.current).visibility);
+        }, 500);
+        console.log('[WebRTC] Set remote video srcObject:', stream);
         remoteVideoRef.current.play()
           .then(() => console.log('[WebRTC] Remote video playing'))
           .catch(e => console.log('[WebRTC] Remote video play error:', e));
@@ -249,7 +262,7 @@ const LocalVideoOnly = () => {
         </div>
         <div>
           <div style={{ color: 'white', marginBottom: 4 }}>Partner</div>
-          <video ref={remoteVideoRef} autoPlay playsInline width={400} height={300} style={{ background: '#000' }} />
+          <video ref={remoteVideoRef} autoPlay playsInline muted width={400} height={300} style={{ background: '#000', border: '3px solid red' }} />
         </div>
       </div>
     </div>
