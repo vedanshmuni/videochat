@@ -27,6 +27,7 @@ const VideoChat = () => {
     useEffect(() => {
         if (localVideoRef.current && localStream) {
             localVideoRef.current.srcObject = localStream;
+            localVideoRef.current.play().catch(e => console.log('Video play error:', e));
             console.log('Set local video srcObject:', localStream, localStream.getTracks());
         }
     }, [localStream]);
