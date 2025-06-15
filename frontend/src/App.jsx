@@ -1,17 +1,7 @@
-import VideoChat from './components/VideoChat'
-import './App.css'
+import LocalVideoTest from './components/LocalVideoTest';
 
 function App() {
-  return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Random Video Chat</h1>
-      </header>
-      <main>
-        <VideoChat />
-      </main>
-    </div>
-  )
+  return <LocalVideoTest />;
 }
 
-export default App
+export default App;
