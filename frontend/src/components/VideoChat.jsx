@@ -12,6 +12,7 @@ const VideoChat = () => {
     const [newMessage, setNewMessage] = useState('');
     const [interests, setInterests] = useState([]);
     const [showInterests, setShowInterests] = useState(true);
+    const [role, setRole] = useState(null); // 'offerer' or 'answerer'
     
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
@@ -50,10 +51,11 @@ const VideoChat = () => {
             setIsWaiting(true);
         });
 
-        socketRef.current.on('partner-found', (partnerId) => {
+        socketRef.current.on('partner-found', ({ partnerId, role }) => {
             setIsWaiting(false);
             setShowInterests(false);
-            createPeerConnection(partnerId);
+            setRole(role);
+            createPeerConnection(partnerId, role);
         });
 
         socketRef.current.on('partner-left', () => {
@@ -118,7 +120,7 @@ const VideoChat = () => {
         }
     };
 
-    const createPeerConnection = (partnerId) => {
+    const createPeerConnection = (partnerId, role) => {
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' }
@@ -152,15 +154,17 @@ const VideoChat = () => {
             }
         };
 
-        // Create and send offer
-        peerConnection.createOffer()
-            .then(offer => peerConnection.setLocalDescription(offer))
-            .then(() => {
-                socketRef.current.emit('offer', {
-                    target: partnerId,
-                    sdp: peerConnection.localDescription
+        // Only the offerer creates and sends the offer
+        if (role === 'offerer') {
+            peerConnection.createOffer()
+                .then(offer => peerConnection.setLocalDescription(offer))
+                .then(() => {
+                    socketRef.current.emit('offer', {
+                        target: partnerId,
+                        sdp: peerConnection.localDescription
+                    });
                 });
-            });
+        }
     };
 
     const handleOffer = async (data) => {

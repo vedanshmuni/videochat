@@ -27,26 +27,21 @@ io.on('connection', (socket) => {
 
     // Handle user joining with interests
     socket.on('join', (interests) => {
-        // Find a matching partner based on interests
         let foundMatch = false;
         for (let [waitingSocket, waitingInterests] of waitingUsers.entries()) {
-            // If interests match or either user has no interests
             if (!interests || !waitingInterests || 
                 interests.some(interest => waitingInterests.includes(interest))) {
                 waitingUsers.delete(waitingSocket);
                 socket.join(waitingSocket.id);
                 waitingSocket.join(socket.id);
-                
-                // Notify both users they are connected
-                io.to(socket.id).emit('partner-found', waitingSocket.id);
-                io.to(waitingSocket.id).emit('partner-found', socket.id);
+                // Notify both users they are connected and assign roles
+                io.to(socket.id).emit('partner-found', { partnerId: waitingSocket.id, role: 'offerer' });
+                io.to(waitingSocket.id).emit('partner-found', { partnerId: socket.id, role: 'answerer' });
                 foundMatch = true;
                 break;
             }
         }
-
         if (!foundMatch) {
-            // If no match found, add to waiting list
             waitingUsers.set(socket, interests || []);
         }
     });
