@@ -37,6 +37,7 @@ const VideoChat = () => {
         // Request camera and microphone permissions
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then((stream) => {
+                console.log('Got local stream:', stream);
                 localStreamRef.current = stream;
                 if (localVideoRef.current) {
                     localVideoRef.current.srcObject = stream;
@@ -66,6 +67,10 @@ const VideoChat = () => {
                 peerConnectionRef.current.close();
                 peerConnectionRef.current = null;
             }
+            // Reset remote video
+            if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = null;
+            }
         });
 
         socketRef.current.on('text-message', (data) => {
@@ -89,6 +94,9 @@ const VideoChat = () => {
             if (localStreamRef.current) {
                 localStreamRef.current.getTracks().forEach(track => track.stop());
             }
+            // Reset local and remote video
+            if (localVideoRef.current) localVideoRef.current.srcObject = null;
+            if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
         };
     }, []);
 
@@ -97,6 +105,14 @@ const VideoChat = () => {
     };
 
     const handleNext = () => {
+        // Reset peer connection and remote video
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+            peerConnectionRef.current = null;
+        }
+        if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = null;
+        }
         socketRef.current.emit('next');
         setMessages([]);
     };
@@ -136,6 +152,9 @@ const VideoChat = () => {
             localStreamRef.current.getTracks().forEach(track => {
                 peerConnection.addTrack(track, localStreamRef.current);
             });
+        } else {
+            setError('Local stream not available. Please allow camera/mic and reload.');
+            console.error('Local stream not available when creating peer connection');
         }
 
         // Handle ICE candidates
@@ -150,7 +169,8 @@ const VideoChat = () => {
 
         // Handle remote stream
         peerConnection.ontrack = (event) => {
-            if (remoteVideoRef.current) {
+            console.log('ontrack event:', event.streams);
+            if (remoteVideoRef.current && event.streams[0]) {
                 remoteVideoRef.current.srcObject = event.streams[0];
             }
         };
