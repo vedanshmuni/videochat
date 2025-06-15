@@ -44,11 +44,13 @@ const LocalVideoOnly = () => {
     socketRef.current = io(BACKEND_URL);
     socketRef.current.on('connect', () => {
       setStatus('Connected to server, waiting for partner...');
+      console.log('[Socket] Connected to server');
       socketRef.current.emit('join');
     });
     socketRef.current.on('partner-found', ({ partnerId, role }) => {
       setStatus('Partner found! Connecting...');
       setRole(role);
+      console.log('[Socket] Partner found:', partnerId, 'Role:', role);
       createPeerConnection(partnerId, role);
     });
     socketRef.current.on('offer', handleOffer);
@@ -56,6 +58,7 @@ const LocalVideoOnly = () => {
     socketRef.current.on('ice-candidate', handleIceCandidate);
     socketRef.current.on('partner-left', () => {
       setStatus('Partner left. Refresh to try again.');
+      console.log('[Socket] Partner left');
       if (peerConnectionRef.current) peerConnectionRef.current.close();
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     });
@@ -73,32 +76,49 @@ const LocalVideoOnly = () => {
       ]
     });
     peerConnectionRef.current = pc;
+    console.log('[WebRTC] Created RTCPeerConnection', pc);
     // Add local tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current);
+        console.log('[WebRTC] Added local track:', track.kind);
       });
     }
     // ICE
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log('[WebRTC] ICE candidate:', event.candidate);
         socketRef.current.emit('ice-candidate', {
           target: partnerId,
           candidate: event.candidate
         });
       }
     };
+    pc.oniceconnectionstatechange = () => {
+      console.log('[WebRTC] ICE connection state:', pc.iceConnectionState);
+      setStatus('ICE connection state: ' + pc.iceConnectionState);
+    };
+    pc.onconnectionstatechange = () => {
+      console.log('[WebRTC] Connection state:', pc.connectionState);
+      setStatus('Connection state: ' + pc.connectionState);
+    };
     // Remote stream
     pc.ontrack = (event) => {
+      console.log('[WebRTC] ontrack event:', event.streams);
       if (remoteVideoRef.current && event.streams[0]) {
         remoteVideoRef.current.srcObject = event.streams[0];
+        remoteVideoRef.current.play().catch(e => console.log('Remote video play error:', e));
       }
     };
     // Only offerer creates offer
     if (role === 'offerer') {
       pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
+        .then(offer => {
+          console.log('[WebRTC] Created offer:', offer);
+          return pc.setLocalDescription(offer);
+        })
         .then(() => {
+          console.log('[WebRTC] Set local description (offer)');
           socketRef.current.emit('offer', {
             target: partnerId,
             sdp: pc.localDescription
@@ -110,12 +130,15 @@ const LocalVideoOnly = () => {
   async function handleOffer(data) {
     if (!peerConnectionRef.current) return;
     if (role !== 'answerer') return;
+    console.log('[WebRTC] Received offer:', data.sdp);
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    console.log('[WebRTC] Set remote description (offer)');
     // Add any queued ICE candidates
     if (pendingCandidatesRef.current.length > 0) {
       for (const candidate of pendingCandidatesRef.current) {
         try {
           await peerConnectionRef.current.addIceCandidate(candidate);
+          console.log('[WebRTC] Added queued ICE candidate');
         } catch (e) {
           console.error('Error adding queued ICE candidate', e);
         }
@@ -123,7 +146,9 @@ const LocalVideoOnly = () => {
       pendingCandidatesRef.current = [];
     }
     const answer = await peerConnectionRef.current.createAnswer();
+    console.log('[WebRTC] Created answer:', answer);
     await peerConnectionRef.current.setLocalDescription(answer);
+    console.log('[WebRTC] Set local description (answer)');
     socketRef.current.emit('answer', {
       target: data.target,
       sdp: peerConnectionRef.current.localDescription
@@ -133,12 +158,15 @@ const LocalVideoOnly = () => {
   async function handleAnswer(data) {
     if (!peerConnectionRef.current) return;
     if (role !== 'offerer') return;
+    console.log('[WebRTC] Received answer:', data.sdp);
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    console.log('[WebRTC] Set remote description (answer)');
     // Add any queued ICE candidates
     if (pendingCandidatesRef.current.length > 0) {
       for (const candidate of pendingCandidatesRef.current) {
         try {
           await peerConnectionRef.current.addIceCandidate(candidate);
+          console.log('[WebRTC] Added queued ICE candidate');
         } catch (e) {
           console.error('Error adding queued ICE candidate', e);
         }
@@ -150,14 +178,17 @@ const LocalVideoOnly = () => {
   async function handleIceCandidate(data) {
     try {
       if (!peerConnectionRef.current) return;
+      console.log('[WebRTC] Received ICE candidate:', data.candidate);
       const candidate = new RTCIceCandidate(data.candidate);
       if (
         peerConnectionRef.current.remoteDescription &&
         peerConnectionRef.current.remoteDescription.type
       ) {
         await peerConnectionRef.current.addIceCandidate(candidate);
+        console.log('[WebRTC] Added ICE candidate');
       } else {
         pendingCandidatesRef.current.push(candidate);
+        console.log('[WebRTC] Queued ICE candidate');
       }
     } catch (e) {
       console.error('Error adding received ice candidate', e);
