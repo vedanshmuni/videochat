@@ -13,14 +13,23 @@ const VideoChat = () => {
     const [interests, setInterests] = useState([]);
     const [showInterests, setShowInterests] = useState(true);
     const [role, setRole] = useState(null); // 'offerer' or 'answerer'
+    const [localStream, setLocalStream] = useState(null); // useState for local stream
     
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
     const peerConnectionRef = useRef(null);
     const socketRef = useRef(null);
     const messagesEndRef = useRef(null);
-    const localStreamRef = useRef(null); // Store the local stream
+    const localStreamRef = useRef(null); // Store the local stream for peer connection
     const pendingCandidatesRef = useRef([]);
+
+    // Set local video srcObject when localStream changes
+    useEffect(() => {
+        if (localVideoRef.current && localStream) {
+            localVideoRef.current.srcObject = localStream;
+            console.log('Set local video srcObject:', localStream, localStream.getTracks());
+        }
+    }, [localStream]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -37,11 +46,9 @@ const VideoChat = () => {
         // Request camera and microphone permissions
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then((stream) => {
-                console.log('Got local stream:', stream);
+                console.log('Got local stream:', stream, stream.getTracks());
+                setLocalStream(stream);
                 localStreamRef.current = stream;
-                if (localVideoRef.current) {
-                    localVideoRef.current.srcObject = stream;
-                }
             })
             .catch((err) => {
                 setError('Error accessing camera and microphone: ' + err.message + '. Please allow permissions and reload the page.');
