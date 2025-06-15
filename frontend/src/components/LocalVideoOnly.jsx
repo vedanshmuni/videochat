@@ -13,6 +13,7 @@ const LocalVideoOnly = () => {
   const [status, setStatus] = useState('Waiting for camera...');
   const [role, setRole] = useState(null); // 'offerer' or 'answerer'
   const pendingCandidatesRef = useRef([]);
+  const pendingOfferRef = useRef(null); // Store pending offer if needed
 
   useEffect(() => {
     // Get local media
@@ -56,8 +57,21 @@ const LocalVideoOnly = () => {
       setRole(role);
       console.log('[Socket] Partner found:', partnerId, 'Role:', role);
       createPeerConnection(partnerId, role);
+      // If we received an offer before peer connection was ready, process it now
+      if (role === 'answerer' && pendingOfferRef.current) {
+        handleOffer(pendingOfferRef.current);
+        pendingOfferRef.current = null;
+      }
     });
-    socketRef.current.on('offer', handleOffer);
+    socketRef.current.on('offer', (data) => {
+      // If peer connection is not ready, store the offer
+      if (!peerConnectionRef.current) {
+        console.log('[Socket] Offer received before peer connection ready, queueing');
+        pendingOfferRef.current = data;
+        return;
+      }
+      handleOffer(data);
+    });
     socketRef.current.on('answer', handleAnswer);
     socketRef.current.on('ice-candidate', handleIceCandidate);
     socketRef.current.on('partner-left', () => {
@@ -133,7 +147,11 @@ const LocalVideoOnly = () => {
 
   async function handleOffer(data) {
     console.log('[Socket] Received offer event', data);
-    if (!peerConnectionRef.current) return;
+    if (!peerConnectionRef.current) {
+      console.log('[WebRTC] Peer connection not ready, queueing offer');
+      pendingOfferRef.current = data;
+      return;
+    }
     if (role !== 'answerer') return; // Only answerer handles offer
     console.log('[WebRTC] Received offer:', data.sdp);
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
