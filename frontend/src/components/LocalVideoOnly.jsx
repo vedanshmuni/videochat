@@ -12,6 +12,7 @@ const LocalVideoOnly = () => {
   const [error, setError] = useState(null);
   const [status, setStatus] = useState('Waiting for camera...');
   const [role, setRole] = useState(null); // 'offerer' or 'answerer'
+  const [canPlay, setCanPlay] = useState(false); // For manual play button
   const roleRef = useRef(null); // Use ref for role
   const pendingCandidatesRef = useRef([]);
   const pendingOfferRef = useRef(null); // Store pending offer if needed
@@ -89,12 +90,13 @@ const LocalVideoOnly = () => {
   function createPeerConnection(partnerId, role) {
     const pc = new RTCPeerConnection({
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        {
-          urls: 'turn:openrelay.metered.ca:80',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
+        { urls: 'stun:stun.l.google.com:19302' }
+        // Original TURN configuration (commented out for same-Wi-Fi testing)
+        // {
+        //   urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'],
+        //   username: 'openrelayproject',
+        //   credential: 'openrelayproject'
+        // }
       ]
     });
     peerConnectionRef.current = pc;
@@ -119,6 +121,15 @@ const LocalVideoOnly = () => {
     pc.oniceconnectionstatechange = () => {
       console.log('[WebRTC] ICE connection state:', pc.iceConnectionState);
       setStatus('ICE connection state: ' + pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        pc.getStats(null).then(stats => {
+          stats.forEach(report => {
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              console.log('[WebRTC] Selected candidate pair:', report);
+            }
+          });
+        });
+      }
     };
     pc.onconnectionstatechange = () => {
       console.log('[WebRTC] Connection state:', pc.connectionState);
@@ -129,29 +140,47 @@ const LocalVideoOnly = () => {
       console.log('[WebRTC] ontrack event:', event.streams);
       if (remoteVideoRef.current && event.streams[0]) {
         const stream = event.streams[0];
-        const videoTracks = stream.getVideoTracks();
-        const audioTracks = stream.getAudioTracks();
-        console.log('[WebRTC] Remote stream video tracks:', videoTracks);
-        console.log('[WebRTC] Remote stream audio tracks:', audioTracks);
-        videoTracks.forEach(track => {
-          console.log('[WebRTC] Remote video track enabled:', track.enabled, 'readyState:', track.readyState);
-        });
-        // Only set srcObject if it's not already set to this stream
-        if (remoteVideoRef.current.srcObject !== stream) {
+        if (!remoteVideoRef.current.srcObject) {
           remoteVideoRef.current.srcObject = stream;
           console.log('[WebRTC] Set remote video srcObject:', stream);
-          remoteVideoRef.current.play()
-            .then(() => console.log('[WebRTC] Remote video playing'))
-            .catch(e => console.log('[WebRTC] Remote video play error:', e));
+          setCanPlay(true); // Enable play button
+          remoteVideoRef.current.style.border = '3px solid red';
+          remoteVideoRef.current.style.background = '#222';
+          // Monitor video track
+          const videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            console.log('[WebRTC] Remote video track:', {
+              enabled: videoTrack.enabled,
+              readyState: videoTrack.readyState,
+              muted: videoTrack.muted,
+              label: videoTrack.label,
+              id: videoTrack.id
+            });
+            // Check for frame delivery
+            const checkFrames = async () => {
+              if (remoteVideoRef.current && peerConnectionRef.current) {
+                const stats = await pc.getStats(null);
+                stats.forEach(report => {
+                  if (report.type === 'track' && report.kind === 'video' && report.trackId === videoTrack.id) {
+                    console.log('[WebRTC] Video track stats:', {
+                      framesDecoded: report.framesDecoded,
+                      framesDropped: report.framesDropped,
+                      framesReceived: report.framesReceived
+                    });
+                  }
+                });
+                setTimeout(checkFrames, 1000); // Check every second
+              }
+            };
+            setTimeout(checkFrames, 1000);
+          }
+          setTimeout(() => {
+            const rect = remoteVideoRef.current.getBoundingClientRect();
+            console.log('[WebRTC] Remote video element size:', rect.width, rect.height, 'display:', getComputedStyle(remoteVideoRef.current).display, 'visibility:', getComputedStyle(remoteVideoRef.current).visibility);
+          }, 500);
         } else {
-          console.log('[WebRTC] Remote video srcObject already set, skipping');
+          console.log('[WebRTC] Remote stream already set, ignoring duplicate ontrack');
         }
-        remoteVideoRef.current.style.border = '3px solid red';
-        remoteVideoRef.current.style.background = '#222';
-        setTimeout(() => {
-          const rect = remoteVideoRef.current.getBoundingClientRect();
-          console.log('[WebRTC] Remote video element size:', rect.width, rect.height, 'display:', getComputedStyle(remoteVideoRef.current).display, 'visibility:', getComputedStyle(remoteVideoRef.current).visibility);
-        }, 500);
       } else {
         console.log('[WebRTC] ontrack: No remote video element or no stream');
       }
@@ -160,7 +189,24 @@ const LocalVideoOnly = () => {
     if (role === 'offerer') {
       pc.createOffer()
         .then(offer => {
-          console.log('[WebRTC] Created offer:', offer);
+          // Force VP8 for video
+          const modifiedSdp = offer.sdp.replace(/m=video[^]*?(\r\n|\n)/g, (match) => {
+            const lines = match.split('\r\n');
+            const videoLine = lines[0];
+            const rtpmapLines = lines.filter(line => line.includes('a=rtpmap'));
+            const vp8Line = rtpmapLines.find(line => line.includes('VP8'));
+            if (vp8Line) {
+              const vp8Pt = vp8Line.match(/a=rtpmap:(\d+)/)[1];
+              const newLines = [videoLine.replace(/(\d+)(.*)/, `${vp8Pt} UDP/TLS/RTP/SAVPF ${vp8Pt}`)];
+              newLines.push(vp8Line);
+              newLines.push(...lines.filter(line => line.includes('a=fmtp') && line.includes(vp8Pt)));
+              newLines.push(...lines.filter(line => line.includes('a=rtcp-fb') && line.includes(vp8Pt)));
+              return newLines.join('\r\n') + '\r\n';
+            }
+            return match;
+          });
+          offer.sdp = modifiedSdp;
+          console.log('[WebRTC] Modified offer SDP for VP8:', offer.sdp);
           return pc.setLocalDescription(offer);
         })
         .then(() => {
@@ -172,6 +218,20 @@ const LocalVideoOnly = () => {
         });
     }
   }
+
+  const playRemoteVideo = () => {
+    if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
+      remoteVideoRef.current.play()
+        .then(() => {
+          console.log('[WebRTC] Remote video playing after user interaction');
+          setCanPlay(false);
+        })
+        .catch(e => {
+          console.error('[WebRTC] Remote video play error:', e);
+          setError('Failed to play remote video: ' + e.message);
+        });
+    }
+  };
 
   async function handleOffer(data) {
     console.log('[Socket] Received offer event', data);
@@ -186,7 +246,6 @@ const LocalVideoOnly = () => {
     }
     console.log('[WebRTC] Received offer:', data.sdp);
     console.log('[WebRTC] Signaling state before setRemoteDescription:', peerConnectionRef.current.signalingState);
-    // Process the offer even if the signaling state is 'stable'
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
     console.log('[WebRTC] Set remote description (offer)');
     // Add any queued ICE candidates
@@ -268,11 +327,16 @@ const LocalVideoOnly = () => {
         </div>
         <div>
           <div style={{ color: 'white', marginBottom: 4 }}>Partner</div>
-          <video ref={remoteVideoRef} autoPlay playsInline muted width={400} height={300} style={{ background: '#000', border: '3px solid red' }} />
+          <video ref={remoteVideoRef} autoPlay playsInline width={400} height={300} style={{ background: '#000', border: '3px solid red' }} />
+          {canPlay && (
+            <button onClick={playRemoteVideo} style={{ marginTop: 8, padding: '8px 16px' }}>
+              Play Remote Video
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export default LocalVideoOnly; 
+export default LocalVideoOnly;
