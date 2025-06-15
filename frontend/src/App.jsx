@@ -1,7 +1,7 @@
-import LocalVideoTest from './components/LocalVideoTest';
+import LocalVideoOnly from './components/LocalVideoOnly';
 
 function App() {
-  return <LocalVideoTest />;
+  return <LocalVideoOnly />;
 }
 
 export default App;
