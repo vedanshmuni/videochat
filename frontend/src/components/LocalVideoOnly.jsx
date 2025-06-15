@@ -59,11 +59,13 @@ const LocalVideoOnly = () => {
       createPeerConnection(partnerId, role);
       // If we received an offer before peer connection was ready, process it now
       if (role === 'answerer' && pendingOfferRef.current) {
+        console.log('[Socket] Processing pending offer after peer connection created:', pendingOfferRef.current);
         handleOffer(pendingOfferRef.current);
         pendingOfferRef.current = null;
       }
     });
     socketRef.current.on('offer', (data) => {
+      console.log('[Socket] Offer event received:', data);
       // If peer connection is not ready, store the offer
       if (!peerConnectionRef.current) {
         console.log('[Socket] Offer received before peer connection ready, queueing');
