@@ -60,7 +60,6 @@ const LocalVideoOnly = () => {
       roleRef.current = role; // Update ref
       console.log('[Socket] Partner found:', partnerId, 'Role:', role);
       createPeerConnection(partnerId, role);
-      // If we received an offer before peer connection was ready, process it now
       if (role === 'answerer' && pendingOfferRef.current) {
         console.log('[Socket] Processing pending offer after peer connection created:', pendingOfferRef.current);
         handleOffer(pendingOfferRef.current);
@@ -69,7 +68,6 @@ const LocalVideoOnly = () => {
     });
     socketRef.current.on('offer', (data) => {
       console.log('[Socket] Offer event received:', data);
-      // If peer connection is not ready, store the offer
       if (!peerConnectionRef.current) {
         console.log('[Socket] Offer received before peer connection ready, queueing');
         pendingOfferRef.current = data;
@@ -84,6 +82,7 @@ const LocalVideoOnly = () => {
       console.log('[Socket] Partner left');
       if (peerConnectionRef.current) peerConnectionRef.current.close();
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      setCanPlay(false);
     });
   }
 
@@ -91,7 +90,7 @@ const LocalVideoOnly = () => {
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' }
-        // Original TURN configuration (commented out for same-Wi-Fi testing)
+        // Fallback TURN configuration (uncomment if STUN-only fails)
         // {
         //   urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'],
         //   username: 'openrelayproject',
@@ -134,6 +133,11 @@ const LocalVideoOnly = () => {
     pc.onconnectionstatechange = () => {
       console.log('[WebRTC] Connection state:', pc.connectionState);
       setStatus('Connection state: ' + pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        console.log('[WebRTC] Peer connection fully established');
+      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        setError('Peer connection failed or disconnected: ' + pc.connectionState);
+      }
     };
     // Remote stream
     pc.ontrack = (event) => {
@@ -156,19 +160,39 @@ const LocalVideoOnly = () => {
               label: videoTrack.label,
               id: videoTrack.id
             });
+            // Monitor track mute state
+            videoTrack.onmute = () => {
+              console.log('[WebRTC] Remote video track muted:', {
+                enabled: videoTrack.enabled,
+                readyState: videoTrack.readyState,
+                muted: videoTrack.muted
+              });
+              setError('Remote video track muted, no frames being received');
+            };
+            videoTrack.onunmute = () => {
+              console.log('[WebRTC] Remote video track unmuted');
+              setError(null);
+            };
             // Check for frame delivery
             const checkFrames = async () => {
-              if (remoteVideoRef.current && peerConnectionRef.current) {
-                const stats = await pc.getStats(null);
-                stats.forEach(report => {
-                  if (report.type === 'track' && report.kind === 'video' && report.trackId === videoTrack.id) {
-                    console.log('[WebRTC] Video track stats:', {
-                      framesDecoded: report.framesDecoded,
-                      framesDropped: report.framesDropped,
-                      framesReceived: report.framesReceived
-                    });
-                  }
-                });
+              if (remoteVideoRef.current && peerConnectionRef.current && videoTrack.readyState === 'live') {
+                try {
+                  const stats = await pc.getStats(null);
+                  stats.forEach(report => {
+                    if (report.type === 'track' && report.kind === 'video' && report.trackId === videoTrack.id) {
+                      console.log('[WebRTC] Video track stats:', {
+                        framesDecoded: report.framesDecoded,
+                        framesDropped: report.framesDropped,
+                        framesReceived: report.framesReceived
+                      });
+                      if (report.framesReceived > 0 && report.framesDecoded === 0) {
+                        setError('Frames received but not decoded, possible codec issue');
+                      }
+                    }
+                  });
+                } catch (e) {
+                  console.error('[WebRTC] Error fetching stats:', e);
+                }
                 setTimeout(checkFrames, 1000); // Check every second
               }
             };
@@ -190,22 +214,34 @@ const LocalVideoOnly = () => {
       pc.createOffer()
         .then(offer => {
           // Force VP8 for video
-          const modifiedSdp = offer.sdp.replace(/m=video[^]*?(\r\n|\n)/g, (match) => {
-            const lines = match.split('\r\n');
-            const videoLine = lines[0];
-            const rtpmapLines = lines.filter(line => line.includes('a=rtpmap'));
-            const vp8Line = rtpmapLines.find(line => line.includes('VP8'));
+          const lines = offer.sdp.split('\r\n');
+          const videoSectionStart = lines.findIndex(line => line.startsWith('m=video'));
+          if (videoSectionStart !== -1) {
+            const videoLine = lines[videoSectionStart];
+            const rtpmapLines = lines.filter(line => line.includes('a=rtpmap') && line.includes('VP8'));
+            const vp8Line = rtpmapLines.find(line => line.includes('VP8/90000'));
             if (vp8Line) {
               const vp8Pt = vp8Line.match(/a=rtpmap:(\d+)/)[1];
-              const newLines = [videoLine.replace(/(\d+)(.*)/, `${vp8Pt} UDP/TLS/RTP/SAVPF ${vp8Pt}`)];
-              newLines.push(vp8Line);
-              newLines.push(...lines.filter(line => line.includes('a=fmtp') && line.includes(vp8Pt)));
-              newLines.push(...lines.filter(line => line.includes('a=rtcp-fb') && line.includes(vp8Pt)));
-              return newLines.join('\r\n') + '\r\n';
+              // Update m=video line to only include VP8 and its RTX
+              lines[videoSectionStart] = `m=video 9 UDP/TLS/RTP/SAVPF ${vp8Pt} ${parseInt(vp8Pt) + 1}`;
+              // Keep only VP8-related lines
+              const newLines = lines.filter(line => 
+                !line.startsWith('m=video') &&
+                !line.includes('a=rtpmap') &&
+                !line.includes('a=fmtp') &&
+                !line.includes('a=rtcp-fb')
+              );
+              // Add back VP8 and its RTX lines
+              const vp8Lines = lines.filter(line => 
+                line === vp8Line ||
+                (line.includes('a=fmtp') && line.includes(vp8Pt)) ||
+                (line.includes('a=rtcp-fb') && line.includes(vp8Pt)) ||
+                (line.includes('a=rtpmap') && line.includes(`rtx/90000`) && lines.some(l => l.includes(`a=fmtp:${parseInt(vp8Pt) + 1} apt=${vp8Pt}`)))
+              );
+              lines.splice(videoSectionStart, lines.length - videoSectionStart, ...[lines[videoSectionStart], ...vp8Lines]);
+              offer.sdp = lines.join('\r\n');
             }
-            return match;
-          });
-          offer.sdp = modifiedSdp;
+          }
           console.log('[WebRTC] Modified offer SDP for VP8:', offer.sdp);
           return pc.setLocalDescription(offer);
         })
@@ -215,6 +251,10 @@ const LocalVideoOnly = () => {
             target: partnerId,
             sdp: pc.localDescription
           });
+        })
+        .catch(e => {
+          console.error('[WebRTC] Error creating offer:', e);
+          setError('Failed to create offer: ' + e.message);
         });
     }
   }
@@ -230,6 +270,9 @@ const LocalVideoOnly = () => {
           console.error('[WebRTC] Remote video play error:', e);
           setError('Failed to play remote video: ' + e.message);
         });
+    } else {
+      console.log('[WebRTC] No remote stream to play');
+      setError('No remote video stream available');
     }
   };
 
@@ -242,55 +285,63 @@ const LocalVideoOnly = () => {
     }
     if (roleRef.current !== 'answerer') {
       console.log('[WebRTC] Not answerer, skipping offer handling. Current role:', roleRef.current);
-      return; // Only answerer handles offer
+      return;
     }
     console.log('[WebRTC] Received offer:', data.sdp);
     console.log('[WebRTC] Signaling state before setRemoteDescription:', peerConnectionRef.current.signalingState);
-    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
-    console.log('[WebRTC] Set remote description (offer)');
-    // Add any queued ICE candidates
-    if (pendingCandidatesRef.current.length > 0) {
-      for (const candidate of pendingCandidatesRef.current) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(candidate);
-          console.log('[WebRTC] Added queued ICE candidate');
-        } catch (e) {
-          console.error('Error adding queued ICE candidate', e);
+    try {
+      await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      console.log('[WebRTC] Set remote description (offer)');
+      if (pendingCandidatesRef.current.length > 0) {
+        for (const candidate of pendingCandidatesRef.current) {
+          try {
+            await peerConnectionRef.current.addIceCandidate(candidate);
+            console.log('[WebRTC] Added queued ICE candidate');
+          } catch (e) {
+            console.error('Error adding queued ICE candidate', e);
+          }
         }
+        pendingCandidatesRef.current = [];
       }
-      pendingCandidatesRef.current = [];
+      const answer = await peerConnectionRef.current.createAnswer();
+      console.log('[WebRTC] Created answer:', answer);
+      await peerConnectionRef.current.setLocalDescription(answer);
+      console.log('[WebRTC] Set local description (answer)');
+      socketRef.current.emit('answer', {
+        target: data.target,
+        sdp: peerConnectionRef.current.localDescription
+      });
+    } catch (e) {
+      console.error('[WebRTC] Error handling offer:', e);
+      setError('Failed to handle offer: ' + e.message);
     }
-    const answer = await peerConnectionRef.current.createAnswer();
-    console.log('[WebRTC] Created answer:', answer);
-    await peerConnectionRef.current.setLocalDescription(answer);
-    console.log('[WebRTC] Set local description (answer)');
-    socketRef.current.emit('answer', {
-      target: data.target,
-      sdp: peerConnectionRef.current.localDescription
-    });
   }
 
   async function handleAnswer(data) {
     if (!peerConnectionRef.current) return;
     if (roleRef.current !== 'offerer') {
       console.log('[WebRTC] Not offerer, skipping answer handling. Current role:', roleRef.current);
-      return; // Only offerer handles answer
+      return;
     }
     console.log('[WebRTC] Received answer:', data.sdp);
     console.log('[WebRTC] Signaling state before setRemoteDescription:', peerConnectionRef.current.signalingState);
-    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
-    console.log('[WebRTC] Set remote description (answer)');
-    // Add any queued ICE candidates
-    if (pendingCandidatesRef.current.length > 0) {
-      for (const candidate of pendingCandidatesRef.current) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(candidate);
-          console.log('[WebRTC] Added queued ICE candidate');
-        } catch (e) {
-          console.error('Error adding queued ICE candidate', e);
+    try {
+      await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      console.log('[WebRTC] Set remote description (answer)');
+      if (pendingCandidatesRef.current.length > 0) {
+        for (const candidate of pendingCandidatesRef.current) {
+          try {
+            await peerConnectionRef.current.addIceCandidate(candidate);
+            console.log('[WebRTC] Added queued ICE candidate');
+          } catch (e) {
+            console.error('Error adding queued ICE candidate', e);
+          }
         }
+        pendingCandidatesRef.current = [];
       }
-      pendingCandidatesRef.current = [];
+    } catch (e) {
+      console.error('[WebRTC] Error handling answer:', e);
+      setError('Failed to handle answer: ' + e.message);
     }
   }
 
@@ -312,6 +363,7 @@ const LocalVideoOnly = () => {
       }
     } catch (e) {
       console.error('Error adding received ice candidate', e);
+      setError('Error adding ICE candidate: ' + e.message);
     }
   }
 
