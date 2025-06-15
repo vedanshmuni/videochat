@@ -12,6 +12,7 @@ const LocalVideoOnly = () => {
   const [error, setError] = useState(null);
   const [status, setStatus] = useState('Waiting for camera...');
   const [role, setRole] = useState(null); // 'offerer' or 'answerer'
+  const roleRef = useRef(null); // Use ref for role
   const pendingCandidatesRef = useRef([]);
   const pendingOfferRef = useRef(null); // Store pending offer if needed
 
@@ -55,6 +56,7 @@ const LocalVideoOnly = () => {
     socketRef.current.on('partner-found', ({ partnerId, role }) => {
       setStatus('Partner found! Connecting...');
       setRole(role);
+      roleRef.current = role; // Update ref
       console.log('[Socket] Partner found:', partnerId, 'Role:', role);
       createPeerConnection(partnerId, role);
       // If we received an offer before peer connection was ready, process it now
@@ -128,7 +130,11 @@ const LocalVideoOnly = () => {
       if (remoteVideoRef.current && event.streams[0]) {
         remoteVideoRef.current.srcObject = event.streams[0];
         console.log('[WebRTC] Set remote video srcObject:', event.streams[0]);
-        remoteVideoRef.current.play().catch(e => console.log('Remote video play error:', e));
+        remoteVideoRef.current.play()
+          .then(() => console.log('[WebRTC] Remote video playing'))
+          .catch(e => console.log('[WebRTC] Remote video play error:', e));
+      } else {
+        console.log('[WebRTC] ontrack: No remote video element or no stream');
       }
     };
     // Only the offerer creates offer
@@ -155,7 +161,10 @@ const LocalVideoOnly = () => {
       pendingOfferRef.current = data;
       return;
     }
-    if (role !== 'answerer') return; // Only answerer handles offer
+    if (roleRef.current !== 'answerer') {
+      console.log('[WebRTC] Not answerer, skipping offer handling. Current role:', roleRef.current);
+      return; // Only answerer handles offer
+    }
     console.log('[WebRTC] Received offer:', data.sdp);
     console.log('[WebRTC] Signaling state before setRemoteDescription:', peerConnectionRef.current.signalingState);
     // Process the offer even if the signaling state is 'stable'
@@ -185,7 +194,10 @@ const LocalVideoOnly = () => {
 
   async function handleAnswer(data) {
     if (!peerConnectionRef.current) return;
-    if (role !== 'offerer') return; // Only offerer handles answer
+    if (roleRef.current !== 'offerer') {
+      console.log('[WebRTC] Not offerer, skipping answer handling. Current role:', roleRef.current);
+      return; // Only offerer handles answer
+    }
     console.log('[WebRTC] Received answer:', data.sdp);
     console.log('[WebRTC] Signaling state before setRemoteDescription:', peerConnectionRef.current.signalingState);
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
