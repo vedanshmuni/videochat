@@ -133,9 +133,11 @@ const LocalVideoOnly = () => {
         const audioTracks = stream.getAudioTracks();
         console.log('[WebRTC] Remote stream video tracks:', videoTracks);
         console.log('[WebRTC] Remote stream audio tracks:', audioTracks);
+        videoTracks.forEach(track => {
+          console.log('[WebRTC] Remote video track enabled:', track.enabled, 'readyState:', track.readyState);
+        });
         remoteVideoRef.current.srcObject = stream;
-        // For debugging: force muted, add border, log size/visibility
-        remoteVideoRef.current.muted = true;
+        // remoteVideoRef.current.muted = true; // Commented out for debugging
         remoteVideoRef.current.style.border = '3px solid red';
         remoteVideoRef.current.style.background = '#222';
         setTimeout(() => {
