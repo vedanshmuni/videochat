@@ -1,0 +1,17 @@
+{
+  "name": "video-chat-app",
+  "version": "1.0.0",
+  "description": "Random video chat application",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+} 
