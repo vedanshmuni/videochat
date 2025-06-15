@@ -23,7 +23,7 @@ const LocalVideoOnly = () => {
       .then((stream) => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(e => console.log('Video play error:', e));
+          videoRef.current.play().catch(e => console.log('Local video play error:', e));
         }
         localStreamRef.current = stream;
         setStatus('Connecting to server...');
@@ -217,27 +217,28 @@ const LocalVideoOnly = () => {
           const lines = offer.sdp.split('\r\n');
           const videoSectionStart = lines.findIndex(line => line.startsWith('m=video'));
           if (videoSectionStart !== -1) {
-            const videoLine = lines[videoSectionStart];
-            const rtpmapLines = lines.filter(line => line.includes('a=rtpmap') && line.includes('VP8'));
-            const vp8Line = rtpmapLines.find(line => line.includes('VP8/90000'));
+            const vp8Line = lines.find(line => line.includes('a=rtpmap') && line.includes('VP8/90000'));
             if (vp8Line) {
               const vp8Pt = vp8Line.match(/a=rtpmap:(\d+)/)[1];
-              // Update m=video line to only include VP8 and its RTX
-              lines[videoSectionStart] = `m=video 9 UDP/TLS/RTP/SAVPF ${vp8Pt} ${parseInt(vp8Pt) + 1}`;
-              // Keep only VP8-related lines
-              const newLines = lines.filter(line => 
-                !line.startsWith('m=video') &&
-                !line.includes('a=rtpmap') &&
-                !line.includes('a=fmtp') &&
-                !line.includes('a=rtcp-fb')
+              const rtxPt = parseInt(vp8Pt) + 1; // Assume RTX is next payload type
+              // Update m=video line to include only VP8 and its RTX
+              lines[videoSectionStart] = `m=video 9 UDP/TLS/RTP/SAVPF ${vp8Pt} ${rtxPt}`;
+              // Keep only VP8 and RTX-related lines
+              const keepLines = lines.filter(line => 
+                !line.startsWith('m=video') && // Keep non-video section lines
+                !line.includes('a=rtpmap') && // Remove all codec lines
+                !line.includes('a=fmtp') && // Remove all fmtp lines
+                !line.includes('a=rtcp-fb') // Remove all rtcp-fb lines
               );
-              // Add back VP8 and its RTX lines
+              // Add back VP8 and RTX lines
               const vp8Lines = lines.filter(line => 
-                line === vp8Line ||
-                (line.includes('a=fmtp') && line.includes(vp8Pt)) ||
-                (line.includes('a=rtcp-fb') && line.includes(vp8Pt)) ||
-                (line.includes('a=rtpmap') && line.includes(`rtx/90000`) && lines.some(l => l.includes(`a=fmtp:${parseInt(vp8Pt) + 1} apt=${vp8Pt}`)))
+                line === vp8Line || // VP8 rtpmap
+                (line.includes('a=rtcp-fb') && line.includes(vp8Pt)) || // VP8 rtcp-fb
+                (line.includes('a=fmtp') && line.includes(vp8Pt)) || // VP8 fmtp
+                (line.includes('a=rtpmap') && line.includes(`rtx/90000`) && lines.some(l => l.includes(`a=fmtp:${rtxPt} apt=${vp8Pt}`))) || // RTX rtpmap
+                (line.includes('a=fmtp') && line.includes(`apt=${vp8Pt}`)) // RTX fmtp
               );
+              // Insert VP8 and RTX lines after video section start
               lines.splice(videoSectionStart, lines.length - videoSectionStart, ...[lines[videoSectionStart], ...vp8Lines]);
               offer.sdp = lines.join('\r\n');
             }
@@ -309,7 +310,7 @@ const LocalVideoOnly = () => {
       console.log('[WebRTC] Set local description (answer)');
       socketRef.current.emit('answer', {
         target: data.target,
-        sdp: peerConnectionRef.current.localDescription
+        sdp: pc.localDescription
       });
     } catch (e) {
       console.error('[WebRTC] Error handling offer:', e);
