@@ -37,12 +37,14 @@ io.on('connection', (socket) => {
                 // Notify both users they are connected and assign roles
                 io.to(socket.id).emit('partner-found', { partnerId: waitingSocket.id, role: 'offerer' });
                 io.to(waitingSocket.id).emit('partner-found', { partnerId: socket.id, role: 'answerer' });
+                console.log('Matched', socket.id, '(offerer) with', waitingSocket.id, '(answerer)');
                 foundMatch = true;
                 break;
             }
         }
         if (!foundMatch) {
             waitingUsers.set(socket, interests || []);
+            console.log('User waiting:', socket.id);
         }
     });
 
@@ -54,22 +56,27 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Handle WebRTC signaling
+    // Handle offer
     socket.on('offer', (data) => {
+        console.log('Relaying offer from', socket.id, 'to', data.target);
         io.to(data.target).emit('offer', {
             sdp: data.sdp,
             target: socket.id
         });
     });
 
+    // Handle answer
     socket.on('answer', (data) => {
+        console.log('Relaying answer from', socket.id, 'to', data.target);
         io.to(data.target).emit('answer', {
             sdp: data.sdp,
             target: socket.id
         });
     });
 
+    // Handle ICE candidate
     socket.on('ice-candidate', (data) => {
+        console.log('Relaying ICE candidate from', socket.id, 'to', data.target);
         io.to(data.target).emit('ice-candidate', {
             candidate: data.candidate,
             target: socket.id
@@ -78,32 +85,21 @@ io.on('connection', (socket) => {
 
     // Handle next request
     socket.on('next', () => {
-        // Find current partner
         const rooms = Array.from(socket.rooms);
         const currentPartner = rooms.find(room => room !== socket.id);
-        
         if (currentPartner) {
-            // Notify current partner
             io.to(currentPartner).emit('partner-left');
-            // Leave current room
             socket.leave(currentPartner);
         }
-
-        // Add to waiting list with previous interests
         const interests = waitingUsers.get(socket) || [];
         waitingUsers.set(socket, interests);
-        
-        // Try to find new match
         socket.emit('join', interests);
     });
 
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        // Remove from waiting list if present
         waitingUsers.delete(socket);
-        
-        // Notify partner if in a chat
         const rooms = Array.from(socket.rooms);
         const partner = rooms.find(room => room !== socket.id);
         if (partner) {
