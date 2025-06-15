@@ -168,52 +168,35 @@ const VideoChat = () => {
     };
 
     const handleOffer = async (data) => {
-        const peerConnection = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
-        peerConnectionRef.current = peerConnection;
-
-        // Add local stream
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStreamRef.current);
-            });
+        if (role !== 'answerer') return;
+        if (!peerConnectionRef.current) return;
+        console.log('handleOffer:', peerConnectionRef.current.signalingState, data.sdp.type, role);
+        if (peerConnectionRef.current.signalingState !== 'stable') {
+            console.warn('Not in stable state, skipping setRemoteDescription for offer');
+            return;
         }
-
-        // Handle ICE candidates
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                socketRef.current.emit('ice-candidate', {
-                    target: data.target,
-                    candidate: event.candidate
-                });
-            }
-        };
-
-        // Handle remote stream
-        peerConnection.ontrack = (event) => {
-            if (remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = event.streams[0];
-            }
-        };
-
-        // Set remote description and create answer
-        await peerConnection.setRemoteDescription(new window.RTCSessionDescription(data.sdp));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-
+        await peerConnectionRef.current.setRemoteDescription(
+            new window.RTCSessionDescription(data.sdp)
+        );
+        const answer = await peerConnectionRef.current.createAnswer();
+        await peerConnectionRef.current.setLocalDescription(answer);
         socketRef.current.emit('answer', {
             target: data.target,
-            sdp: peerConnection.localDescription
+            sdp: peerConnectionRef.current.localDescription
         });
     };
 
     const handleAnswer = async (data) => {
-        if (peerConnectionRef.current) {
-            await peerConnectionRef.current.setRemoteDescription(
-                new window.RTCSessionDescription(data.sdp)
-            );
+        if (role !== 'offerer') return;
+        if (!peerConnectionRef.current) return;
+        console.log('handleAnswer:', peerConnectionRef.current.signalingState, data.sdp.type, role);
+        if (peerConnectionRef.current.signalingState !== 'have-local-offer') {
+            console.warn('Not in have-local-offer state, skipping setRemoteDescription for answer');
+            return;
         }
+        await peerConnectionRef.current.setRemoteDescription(
+            new window.RTCSessionDescription(data.sdp)
+        );
     };
 
     const handleIceCandidate = async (data) => {
