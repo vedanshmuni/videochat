@@ -125,6 +125,7 @@ const LocalVideoOnly = () => {
       console.log('[WebRTC] ontrack event:', event.streams);
       if (remoteVideoRef.current && event.streams[0]) {
         remoteVideoRef.current.srcObject = event.streams[0];
+        console.log('[WebRTC] Set remote video srcObject:', event.streams[0]);
         remoteVideoRef.current.play().catch(e => console.log('Remote video play error:', e));
       }
     };
@@ -154,6 +155,7 @@ const LocalVideoOnly = () => {
     }
     if (role !== 'answerer') return; // Only answerer handles offer
     console.log('[WebRTC] Received offer:', data.sdp);
+    console.log('[WebRTC] Signaling state before setRemoteDescription:', peerConnectionRef.current.signalingState);
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
     console.log('[WebRTC] Set remote description (offer)');
     // Add any queued ICE candidates
@@ -182,6 +184,7 @@ const LocalVideoOnly = () => {
     if (!peerConnectionRef.current) return;
     if (role !== 'offerer') return; // Only offerer handles answer
     console.log('[WebRTC] Received answer:', data.sdp);
+    console.log('[WebRTC] Signaling state before setRemoteDescription:', peerConnectionRef.current.signalingState);
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
     console.log('[WebRTC] Set remote description (answer)');
     // Add any queued ICE candidates
@@ -203,6 +206,7 @@ const LocalVideoOnly = () => {
       if (!peerConnectionRef.current) return;
       console.log('[WebRTC] Received ICE candidate:', data.candidate);
       const candidate = new RTCIceCandidate(data.candidate);
+      console.log('[WebRTC] Signaling state before addIceCandidate:', peerConnectionRef.current.signalingState);
       if (
         peerConnectionRef.current.remoteDescription &&
         peerConnectionRef.current.remoteDescription.type
