@@ -45,7 +45,11 @@ const LocalVideoOnly = () => {
     socketRef.current.on('connect', () => {
       setStatus('Connected to server, waiting for partner...');
       console.log('[Socket] Connected to server');
+      console.log('[Socket] My socket ID:', socketRef.current.id);
       socketRef.current.emit('join');
+    });
+    socketRef.current.onAny((event, ...args) => {
+      console.log('[Socket Event]', event, args);
     });
     socketRef.current.on('partner-found', ({ partnerId, role }) => {
       setStatus('Partner found! Connecting...');
@@ -128,6 +132,7 @@ const LocalVideoOnly = () => {
   }
 
   async function handleOffer(data) {
+    console.log('[Socket] Received offer event', data);
     if (!peerConnectionRef.current) return;
     if (role !== 'answerer') return;
     console.log('[WebRTC] Received offer:', data.sdp);
