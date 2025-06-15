@@ -158,6 +158,7 @@ const LocalVideoOnly = () => {
     if (role !== 'answerer') return; // Only answerer handles offer
     console.log('[WebRTC] Received offer:', data.sdp);
     console.log('[WebRTC] Signaling state before setRemoteDescription:', peerConnectionRef.current.signalingState);
+    // Process the offer even if the signaling state is 'stable'
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
     console.log('[WebRTC] Set remote description (offer)');
     // Add any queued ICE candidates
