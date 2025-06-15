@@ -114,7 +114,7 @@ const LocalVideoOnly = () => {
         remoteVideoRef.current.play().catch(e => console.log('Remote video play error:', e));
       }
     };
-    // Only offerer creates offer
+    // Only the offerer creates offer
     if (role === 'offerer') {
       pc.createOffer()
         .then(offer => {
@@ -134,7 +134,7 @@ const LocalVideoOnly = () => {
   async function handleOffer(data) {
     console.log('[Socket] Received offer event', data);
     if (!peerConnectionRef.current) return;
-    if (role !== 'answerer') return;
+    if (role !== 'answerer') return; // Only answerer handles offer
     console.log('[WebRTC] Received offer:', data.sdp);
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
     console.log('[WebRTC] Set remote description (offer)');
@@ -162,7 +162,7 @@ const LocalVideoOnly = () => {
 
   async function handleAnswer(data) {
     if (!peerConnectionRef.current) return;
-    if (role !== 'offerer') return;
+    if (role !== 'offerer') return; // Only offerer handles answer
     console.log('[WebRTC] Received answer:', data.sdp);
     await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
     console.log('[WebRTC] Set remote description (answer)');
