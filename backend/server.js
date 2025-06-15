@@ -37,9 +37,10 @@ io.on('connection', (socket) => {
                 waitingUsers.delete(waitingSocket);
                 socket.join(waitingSocket.id);
                 waitingSocket.join(socket.id);
-                io.to(socket.id).emit('partner-found', { partnerId: waitingSocket.id, role: 'offerer' });
-                io.to(waitingSocket.id).emit('partner-found', { partnerId: socket.id, role: 'answerer' });
-                console.log('Matched', socket.id, '(offerer) with', waitingSocket.id, '(answerer)');
+                // Correct role assignment: waiting user is offerer, new user is answerer
+                io.to(waitingSocket.id).emit('partner-found', { partnerId: socket.id, role: 'offerer' });
+                io.to(socket.id).emit('partner-found', { partnerId: waitingSocket.id, role: 'answerer' });
+                console.log('Matched', waitingSocket.id, '(offerer) with', socket.id, '(answerer)');
                 foundMatch = true;
                 break;
             }
@@ -60,6 +61,10 @@ io.on('connection', (socket) => {
 
     // Handle offer
     socket.on('offer', (data) => {
+        if (data.target === socket.id) {
+            console.log('Not relaying offer to self:', socket.id);
+            return;
+        }
         console.log('Relaying offer from', socket.id, 'to', data.target);
         io.to(data.target).emit('offer', {
             sdp: data.sdp,
@@ -69,6 +74,10 @@ io.on('connection', (socket) => {
 
     // Handle answer
     socket.on('answer', (data) => {
+        if (data.target === socket.id) {
+            console.log('Not relaying answer to self:', socket.id);
+            return;
+        }
         console.log('Relaying answer from', socket.id, 'to', data.target);
         io.to(data.target).emit('answer', {
             sdp: data.sdp,
@@ -78,6 +87,10 @@ io.on('connection', (socket) => {
 
     // Handle ICE candidate
     socket.on('ice-candidate', (data) => {
+        if (data.target === socket.id) {
+            console.log('Not relaying ICE candidate to self:', socket.id);
+            return;
+        }
         console.log('Relaying ICE candidate from', socket.id, 'to', data.target);
         io.to(data.target).emit('ice-candidate', {
             candidate: data.candidate,
