@@ -18,36 +18,21 @@ const LocalVideoOnly = () => {
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
-    // Use a test video file instead of getUserMedia
-    setStatus('Loading test video...');
-    const testVideo = document.createElement('video');
-    testVideo.src = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
-    testVideo.crossOrigin = 'anonymous';
-    testVideo.autoplay = true;
-    testVideo.muted = true;
-    testVideo.loop = true;
-    testVideo.playsInline = true;
-    // Make the test video visible for debugging
-    testVideo.style.position = 'fixed';
-    testVideo.style.bottom = '10px';
-    testVideo.style.left = '10px';
-    testVideo.style.width = '120px';
-    testVideo.style.zIndex = 9999;
-    testVideo.oncanplay = () => {
-      const stream = testVideo.captureStream();
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(e => console.log('Video play error:', e));
-      }
-      localStreamRef.current = stream;
-      setStatus('Connecting to server...');
-      startSignaling();
-    };
-    testVideo.onerror = (e) => {
-      setError('Error loading test video: ' + testVideo.error?.message);
-      console.error('Test video error:', testVideo.error);
-    };
-    document.body.appendChild(testVideo); // Needed for captureStream to work in some browsers
+    // Get local media and start signaling automatically
+    setStatus('Requesting camera...');
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then((stream) => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.log('Video play error:', e));
+        }
+        localStreamRef.current = stream;
+        setStatus('Connecting to server...');
+        startSignaling();
+      })
+      .catch((err) => {
+        setError('Error accessing camera and microphone: ' + err.message);
+      });
     // Cleanup
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
@@ -55,7 +40,6 @@ const LocalVideoOnly = () => {
       if (localStreamRef.current) localStreamRef.current.getTracks().forEach(track => track.stop());
       if (videoRef.current) videoRef.current.srcObject = null;
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-      testVideo.remove();
     };
     // eslint-disable-next-line
   }, []);
