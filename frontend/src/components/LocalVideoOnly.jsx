@@ -18,7 +18,8 @@ const LocalVideoOnly = () => {
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
-    // Get local media
+    // Get local media and start signaling automatically
+    setStatus('Requesting camera...');
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then((stream) => {
         if (videoRef.current) {
@@ -283,31 +284,8 @@ const LocalVideoOnly = () => {
     }
   }
 
-  function handleStart() {
-    setStarted(true);
-    setStatus('Requesting camera...');
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then((stream) => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(e => console.log('Video play error:', e));
-        }
-        localStreamRef.current = stream;
-        setStatus('Connecting to server...');
-        startSignaling();
-      })
-      .catch((err) => {
-        setError('Error accessing camera and microphone: ' + err.message);
-      });
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', justifyContent: 'center', background: '#222' }}>
-      {!started && (
-        <button onClick={handleStart} style={{ padding: '12px 32px', fontSize: 18, margin: '32px 0', borderRadius: 8, border: 'none', background: '#1a73e8', color: 'white', cursor: 'pointer' }}>
-          Start
-        </button>
-      )}
       <div style={{ color: 'white', fontSize: 18, margin: '12px 0' }}>{status}</div>
       {error && <div style={{ color: 'red', marginBottom: 12 }}>{error}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
