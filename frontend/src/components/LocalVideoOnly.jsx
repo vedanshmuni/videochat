@@ -21,12 +21,18 @@ const LocalVideoOnly = () => {
     // Use a test video file instead of getUserMedia
     setStatus('Loading test video...');
     const testVideo = document.createElement('video');
-    testVideo.src = 'https://www.w3schools.com/html/mov_bbb.mp4';
+    testVideo.src = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
     testVideo.crossOrigin = 'anonymous';
     testVideo.autoplay = true;
     testVideo.muted = true;
     testVideo.loop = true;
     testVideo.playsInline = true;
+    // Make the test video visible for debugging
+    testVideo.style.position = 'fixed';
+    testVideo.style.bottom = '10px';
+    testVideo.style.left = '10px';
+    testVideo.style.width = '120px';
+    testVideo.style.zIndex = 9999;
     testVideo.oncanplay = () => {
       const stream = testVideo.captureStream();
       if (videoRef.current) {
@@ -37,8 +43,9 @@ const LocalVideoOnly = () => {
       setStatus('Connecting to server...');
       startSignaling();
     };
-    testVideo.onerror = () => {
-      setError('Error loading test video.');
+    testVideo.onerror = (e) => {
+      setError('Error loading test video: ' + testVideo.error?.message);
+      console.error('Test video error:', testVideo.error);
     };
     document.body.appendChild(testVideo); // Needed for captureStream to work in some browsers
     // Cleanup
