@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Minimal WebRTC Manual Test</title>
+</head>
+<body>
+  <h3>Minimal WebRTC Manual Test</h3>
+  <video id="local" autoplay playsinline muted width="320" height="240"></video>
+  <div>You</div>
+  <video id="remote" autoplay playsinline width="320" height="240"></video>
+  <div>Partner</div>
+  <div>
+    <button onclick="createOfferOrAnswer()">Create Offer/Answer</button>
+    <button onclick="setRemote()">Set Remote</button>
+  </div>
+  <div>
+    <div>Local SDP/ICE (copy to remote):</div>
+    <textarea id="localBox" style="width:95%;height:60px"></textarea>
+    <div>Remote SDP/ICE (paste from remote):</div>
+    <textarea id="remoteBox" style="width:95%;height:60px"></textarea>
+  </div>
+  <script>
+    let pc, localStream, isOfferer = false;
+    const localVideo = document.getElementById('local');
+    const remoteVideo = document.getElementById('remote');
+    const localBox = document.getElementById('localBox');
+    const remoteBox = document.getElementById('remoteBox');
+
+    async function start() {
+      if (pc) return;
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localVideo.srcObject = localStream;
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          {
+            urls: [
+              'turn:openrelay.metered.ca:80',
+              'turn:openrelay.metered.ca:443',
+              'turn:openrelay.metered.ca:80?transport=tcp',
+              'turn:openrelay.metered.ca:443?transport=tcp'
+            ],
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
+        ]
+      });
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      pc.onicecandidate = e => {
+        if (e.candidate) localBox.value = JSON.stringify({ ice: e.candidate });
+      };
+      pc.ontrack = e => {
+        if (remoteVideo.srcObject !== e.streams[0]) remoteVideo.srcObject = e.streams[0];
+      };
+    }
+
+    async function createOfferOrAnswer() {
+      await start();
+      if (!pc.currentRemoteDescription) {
+        isOfferer = true;
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        localBox.value = JSON.stringify({ sdp: pc.localDescription });
+      } else {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        localBox.value = JSON.stringify({ sdp: pc.localDescription });
+      }
+    }
+
+    async function setRemote() {
+      await start();
+      const data = JSON.parse(remoteBox.value);
+      if (data.sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      } else if (data.ice) {
+        await pc.addIceCandidate(new RTCIceCandidate(data.ice));
+      }
+    }
+  </script>
+</body>
+</html> 

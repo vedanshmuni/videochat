@@ -15,6 +15,7 @@ const LocalVideoOnly = () => {
   const roleRef = useRef(null); // Use ref for role
   const pendingCandidatesRef = useRef([]);
   const pendingOfferRef = useRef(null); // Store pending offer if needed
+  const [started, setStarted] = useState(false);
 
   useEffect(() => {
     // Get local media
@@ -91,7 +92,12 @@ const LocalVideoOnly = () => {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         {
-          urls: 'turn:openrelay.metered.ca:80',
+          urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:80?transport=tcp',
+            'turn:openrelay.metered.ca:443?transport=tcp'
+          ],
           username: 'openrelayproject',
           credential: 'openrelayproject'
         }
@@ -145,6 +151,27 @@ const LocalVideoOnly = () => {
             .catch(e => console.log('[WebRTC] Remote video play error:', e));
         } else {
           console.log('[WebRTC] Remote video srcObject already set, skipping');
+        }
+        // Frame counter using canvas
+        if (!window._frameCheckInterval) {
+          window._frameCheckInterval = setInterval(() => {
+            try {
+              const video = remoteVideoRef.current;
+              if (video && video.readyState >= 2) {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const frame = ctx.getImageData(0, 0, 1, 1).data;
+                if (frame[0] !== 0 || frame[1] !== 0 || frame[2] !== 0) {
+                  console.log('[WebRTC] Remote video: frames are being rendered!');
+                } else {
+                  console.log('[WebRTC] Remote video: no frame data yet.');
+                }
+              }
+            } catch (e) {}
+          }, 1000);
         }
         remoteVideoRef.current.style.border = '3px solid red';
         remoteVideoRef.current.style.background = '#222';
@@ -256,35 +283,39 @@ const LocalVideoOnly = () => {
     }
   }
 
+  function handleStart() {
+    setStarted(true);
+    setStatus('Requesting camera...');
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then((stream) => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.log('Video play error:', e));
+        }
+        localStreamRef.current = stream;
+        setStatus('Connecting to server...');
+        startSignaling();
+      })
+      .catch((err) => {
+        setError('Error accessing camera and microphone: ' + err.message);
+      });
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', justifyContent: 'center', background: '#222' }}>
-      <div style={{ color: 'white', fontSize: 20, margin: '24px 0 12px 0' }}>{status}</div>
+      {!started && (
+        <button onClick={handleStart} style={{ padding: '12px 32px', fontSize: 18, margin: '32px 0', borderRadius: 8, border: 'none', background: '#1a73e8', color: 'white', cursor: 'pointer' }}>
+          Start
+        </button>
+      )}
+      <div style={{ color: 'white', fontSize: 18, margin: '12px 0' }}>{status}</div>
       {error && <div style={{ color: 'red', marginBottom: 12 }}>{error}</div>}
-      <div className="video-container-responsive">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 16 }}>
-          <video ref={videoRef} autoPlay playsInline muted width={320} height={240} style={{ background: '#111', borderRadius: 8, border: '2px solid #444', width: '90vw', maxWidth: 400, height: 'auto' }} />
-          <div style={{ color: '#bbb', marginTop: 6 }}>You</div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <video ref={remoteVideoRef} autoPlay playsInline width={320} height={240} style={{ background: '#111', borderRadius: 8, border: '2px solid #444', width: '90vw', maxWidth: 400, height: 'auto' }} />
-          <div style={{ color: '#bbb', marginTop: 6 }}>Partner</div>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+        <video ref={videoRef} autoPlay playsInline muted width={320} height={240} style={{ background: '#111', borderRadius: 8, border: '2px solid #444', width: '90vw', maxWidth: 400, height: 'auto', marginBottom: 16 }} />
+        <div style={{ color: '#bbb', marginBottom: 16 }}>You</div>
+        <video ref={remoteVideoRef} autoPlay playsInline width={320} height={240} style={{ background: '#111', borderRadius: 8, border: '2px solid #444', width: '90vw', maxWidth: 400, height: 'auto', marginBottom: 16 }} />
+        <div style={{ color: '#bbb', marginBottom: 16 }}>Partner</div>
       </div>
-      <style>{`
-        .video-container-responsive {
-          display: flex;
-          flex-direction: row;
-          gap: 24px;
-          align-items: center;
-          justify-content: center;
-        }
-        @media (max-width: 700px) {
-          .video-container-responsive {
-            flex-direction: column;
-            gap: 0;
-          }
-        }
-      `}</style>
     </div>
   );
 };
