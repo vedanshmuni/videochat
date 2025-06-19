@@ -91,12 +91,7 @@ const LocalVideoOnly = () => {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         {
-          urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:80?transport=tcp',
-            'turn:openrelay.metered.ca:443?transport=tcp'
-          ],
+          urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
           credential: 'openrelayproject'
         }
@@ -263,33 +258,19 @@ const LocalVideoOnly = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', justifyContent: 'center', background: '#222' }}>
-      <div style={{ color: 'white', fontSize: 20, margin: '24px 0 12px 0' }}>{status}</div>
-      {error && <div style={{ color: 'red', marginBottom: 12 }}>{error}</div>}
-      <div className="video-container-responsive">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 16 }}>
-          <video ref={videoRef} autoPlay playsInline muted width={320} height={240} style={{ background: '#111', borderRadius: 8, border: '2px solid #444', width: '90vw', maxWidth: 400, height: 'auto' }} />
-          <div style={{ color: '#bbb', marginTop: 6 }}>You</div>
+      <h2 style={{ color: 'white' }}>Local & Remote Video (WebRTC Test)</h2>
+      <div style={{ color: 'white', marginBottom: 8 }}>{status}</div>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+      <div style={{ display: 'flex', flexDirection: 'row', gap: 32 }}>
+        <div>
+          <div style={{ color: 'white', marginBottom: 4 }}>You</div>
+          <video ref={videoRef} autoPlay playsInline muted width={400} height={300} style={{ background: '#000' }} />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <video ref={remoteVideoRef} autoPlay playsInline width={320} height={240} style={{ background: '#111', borderRadius: 8, border: '2px solid #444', width: '90vw', maxWidth: 400, height: 'auto' }} />
-          <div style={{ color: '#bbb', marginTop: 6 }}>Partner</div>
+        <div>
+          <div style={{ color: 'white', marginBottom: 4 }}>Partner</div>
+          <video ref={remoteVideoRef} autoPlay playsInline muted width={400} height={300} style={{ background: '#000', border: '3px solid red' }} />
         </div>
       </div>
-      <style>{`
-        .video-container-responsive {
-          display: flex;
-          flex-direction: row;
-          gap: 24px;
-          align-items: center;
-          justify-content: center;
-        }
-        @media (max-width: 700px) {
-          .video-container-responsive {
-            flex-direction: column;
-            gap: 0;
-          }
-        }
-      `}</style>
     </div>
   );
 };
