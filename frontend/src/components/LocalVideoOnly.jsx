@@ -99,13 +99,18 @@ const LocalVideoOnly = () => {
     });
     peerConnectionRef.current = pc;
     console.log('[WebRTC] Created RTCPeerConnection', pc);
+
     // Add local tracks
+    console.log('[WebRTC] localStreamRef.current:', localStreamRef.current);
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current);
-        console.log('[WebRTC] Added local track:', track.kind);
+        console.log('[WebRTC] Added local track:', track.kind, track);
       });
+    } else {
+      console.error('[WebRTC] No local stream available when creating peer connection!');
     }
+
     // ICE
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -126,7 +131,7 @@ const LocalVideoOnly = () => {
     };
     // Remote stream
     pc.ontrack = (event) => {
-      console.log('[WebRTC] ontrack event:', event.streams);
+      console.log('[WebRTC] ontrack event:', event, event.streams);
       if (remoteVideoRef.current && event.streams[0]) {
         const stream = event.streams[0];
         const videoTracks = stream.getVideoTracks();
@@ -156,20 +161,18 @@ const LocalVideoOnly = () => {
         console.log('[WebRTC] ontrack: No remote video element or no stream');
       }
     };
-    // Only the offerer creates offer
+    // Only the offerer creates offer, but wait for negotiationneeded
     if (role === 'offerer') {
-      pc.createOffer()
-        .then(offer => {
-          console.log('[WebRTC] Created offer:', offer);
-          return pc.setLocalDescription(offer);
-        })
-        .then(() => {
-          console.log('[WebRTC] Set local description (offer)');
-          socketRef.current.emit('offer', {
-            target: partnerId,
-            sdp: pc.localDescription
+      pc.onnegotiationneeded = () => {
+        pc.createOffer()
+          .then(offer => pc.setLocalDescription(offer))
+          .then(() => {
+            socketRef.current.emit('offer', {
+              target: partnerId,
+              sdp: pc.localDescription
+            });
           });
-        });
+      };
     }
   }
 
